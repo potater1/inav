@@ -723,7 +723,7 @@ static void printSerial(uint8_t dumpMask, const serialConfig_t *serialConfig, co
     }
 }
 
-static void cliSerial(char *cmdline)
+void cliSerial(char *cmdline)
 {
     if (isEmpty(cmdline)) {
         printSerial(DUMP_MASTER, serialConfig(), NULL);

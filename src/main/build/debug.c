@@ -51,7 +51,7 @@ uint8_t debugMode;
 #define DEBUG_TRACE_PREFIX                  "[%6d.%03d] "
 #define DEBUG_TRACE_PREFIX_FORMATTED_SIZE   13
 
-static serialPort_t * tracePort = NULL;
+serialPort_t * tracePort = NULL;
 static mspPort_t * mspTracePort = NULL;
 
 void debugTraceInit(void)

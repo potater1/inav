@@ -48,6 +48,7 @@
 #include "telemetry/jetiexbus.h"
 #include "telemetry/ibus.h"
 #include "telemetry/crsf.h"
+#include "telemetry/gsm.h"
 
 PG_REGISTER_WITH_RESET_TEMPLATE(telemetryConfig_t, telemetryConfig, PG_TELEMETRY_CONFIG, 1);
 
@@ -96,6 +97,10 @@ void telemetryInit(void)
 
 #if defined(USE_TELEMETRY_IBUS)
     initIbusTelemetry();
+#endif
+
+#if defined(USE_TELEMETRY_GSM)
+    initGsmTelemetry();
 #endif
 
 #if defined(USE_SERIALRX_CRSF) && defined(USE_TELEMETRY_CRSF)
@@ -156,6 +161,10 @@ void telemetryCheckState(void)
     checkIbusTelemetryState();
 #endif
 
+#if defined(USE_TELEMETRY_GSM)
+    checkGsmTelemetryState();
+#endif
+
 #if defined(USE_SERIALRX_CRSF) && defined(USE_TELEMETRY_CRSF)
     checkCrsfTelemetryState();
 #endif
@@ -191,6 +200,10 @@ void telemetryProcess(timeUs_t currentTimeUs)
 
 #if defined(USE_TELEMETRY_IBUS)
     handleIbusTelemetry();
+#endif
+
+#if defined(USE_TELEMETRY_GSM)
+    handleGsmTelemetry();
 #endif
 
 #if defined(USE_SERIALRX_CRSF) && defined(USE_TELEMETRY_CRSF)
