@@ -249,7 +249,7 @@ void sendSMS()
     vbat = getBatteryVoltage() * 10;    //vbat converted to mv
     int len;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld SATS:%d GSM:%d google.com/maps/@%ld.%ld,%ld.%ld,500m\x1a",
+    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld SATS:%d GSM:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1a",
         vbat, alt / 100, GPS_distanceToHome, gs, gpsSol.numSat, gsmRssi, lat / 10000000, lat % 10000000, lon / 10000000, lon % 10000000);
     serialWriteBuf(gsmPort, atCommand, len);
     atCommandStatus = GSM_AT_WAITING_FOR_RESPONSE;
