@@ -88,7 +88,7 @@ void debugTraceInit(void)
         }
 
     } else {
-        tracePort = openSerialPort(portConfig->identifier, FUNCTION_DEBUG_TRACE, NULL, NULL, baudRates[BAUD_921600], MODE_TX, SERIAL_NOT_INVERTED);
+        tracePort = openSerialPort(portConfig->identifier, FUNCTION_DEBUG_TRACE, NULL, NULL, baudRates[BAUD_115200], MODE_TX, SERIAL_NOT_INVERTED);
         if (!tracePort) {
             return;
         }

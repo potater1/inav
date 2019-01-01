@@ -8,6 +8,9 @@
 *.elf -crlf -diff
 *.ld text
 Makefile text
+*.mk text
+*.svg text
+*.html text
 *.bat eol=crlf
 *.txt text
 *.sh text

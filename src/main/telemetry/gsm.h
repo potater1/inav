@@ -1,8 +1,7 @@
 #include "io/gps.h"
 #include "io/serial.h"
 
-#define GSM_TEST_SETTINGS
-#define FUNCTION_TELEMETRY_GSM FUNCTION_TELEMETRY_LTM	// FIX THIS
+//#define GSM_TEST_SETTINGS
 #define GSM_AT_COMMAND_MAX_SIZE 256
 #define GSM_RESPONSE_BUFFER_SIZE 256
 #define GSM_CYCLE_MS 5000 								// wait between gsm command cycles

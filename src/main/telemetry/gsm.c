@@ -12,6 +12,7 @@
 #include "fc/fc_core.h"
 #include "fc/rc_controls.h"
 #include "fc/runtime_config.h"
+#include "fc/fc_init.h"
 
 #include "flight/imu.h"
 #include "flight/failsafe.h"
@@ -21,6 +22,7 @@
 #include "io/gps.h"
 #include "io/ledstrip.h"
 #include "io/serial.h"
+#include "drivers/serial_uart.h"
 
 #include "navigation/navigation.h"
 
@@ -45,6 +47,7 @@
 
 #include "build/debug.h"
 
+//#define GSM_TEST_SETTINGS
 
 #ifdef GSM_TEST_SETTINGS
 void cliSerial(char *cmdline);
@@ -52,12 +55,11 @@ extern serialPort_t * tracePort;
 #endif
 
 static serialPort_t *gsmPort;
-static serialPort_t *debugPort;
 static serialPortConfig_t *portConfig;
-static bool gsmEnabled;
+static bool gsmEnabled = false;
 
 static uint8_t atCommand[GSM_AT_COMMAND_MAX_SIZE];
-static int gsmTelemetryState = 0;
+static int gsmTelemetryState = GSM_STATE_INIT;
 static timeUs_t gsmTimeStamp = 0;
 static timeUs_t gsmNextTime = 0;
 static uint8_t gsmResponse[GSM_RESPONSE_BUFFER_SIZE + 1];
@@ -65,7 +67,7 @@ static uint8_t gsmGroundStationNumber[] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 static int atCommandStatus = GSM_AT_OK;
 static uint8_t* gsmResponseValue = NULL;
 static bool gsmWaitAfterResponse = false;
-static bool gsmTestDialDone = false;
+static bool gsmDoTestDial = false;
 
 extern gpsLocation_t        GPS_home;
 extern uint16_t             GPS_distanceToHome;
@@ -139,7 +141,6 @@ void handleGsmTelemetry()
     uint8_t c;
     while (serialRxBytesWaiting(gsmPort)) {
         c = serialRead(gsmPort);
-//        serialWrite(debugPort, c);
         gsmResponse[ri++] = c;
         if (c == '\n' || ri == GSM_RESPONSE_BUFFER_SIZE) {
             gsmResponse[ri] = '\0';
@@ -156,7 +157,7 @@ void handleGsmTelemetry()
     gsmWaitAfterResponse = false;   // by default, if OK or ERROR received, go to next state immediately.
     switch (gsmTelemetryState) {
         case GSM_STATE_INIT:
-        DEBUG_TRACE_SYNC("GSM INIT\n");
+        DEBUG_TRACE_SYNC("GSM INIT");
         sendATCommand("AT\n");
         gsmTelemetryState = GSM_STATE_INIT2;
         break;
@@ -174,24 +175,20 @@ void handleGsmTelemetry()
         break;
         case GSM_STATE_INIT_SET_CLIP:
         sendATCommand("AT+CLIP=1\n");
-        if (now > 10000 && !gsmTestDialDone) {
+        if (gsmDoTestDial && now > 10000) {
             gsmTelemetryState = GSM_STATE_DIAL;
-            gsmTestDialDone = true;
         } else {
             gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
         }
         break;
         case GSM_STATE_DIAL:
-        if (gsmGroundStationNumber[0] != '\0') {
-            sendATCommand("ATD+");
-            sendATCommand((char*)gsmGroundStationNumber);
-            sendATCommand(";\n");
-            gsmNextTime = now + GSM_DIAL_WAIT_MS;
-            gsmWaitAfterResponse = true;
-            gsmTelemetryState = GSM_STATE_DIAL_HANGUP;
-        } else {
-            gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
-        }
+        sendATCommand("ATD+");
+        sendATCommand((char*)gsmGroundStationNumber);
+        sendATCommand(";\n");
+        gsmNextTime = now + GSM_DIAL_WAIT_MS;
+        gsmWaitAfterResponse = true;
+        gsmTelemetryState = GSM_STATE_DIAL_HANGUP;
+        gsmDoTestDial = false;
         break;
         case GSM_STATE_DIAL_HANGUP:
         sendATCommand("ATH\n");
@@ -248,12 +245,11 @@ void sendSMS()
 #else
     alt = sensors(SENSOR_GPS) ? gpsSol.llh.alt : 0; // cm
 #endif
-    lat = 651231237;
-    lon = 243213216;
+//    lat = 651231237;    lon = 243213216;
     vbat = getBatteryVoltage() * 10;    //vbat converted to mv
     int len;
-    // \x1a sends msg, \x1a cancels
-    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld SATS:%d GSM:%d google.com/maps/@%ld.%ld,%ld.%ld,500m\x1b",
+    // \x1a sends msg, \x1b cancels
+    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld SATS:%d GSM:%d google.com/maps/@%ld.%ld,%ld.%ld,500m\x1a",
         vbat, alt / 100, GPS_distanceToHome, gs, gpsSol.numSat, gsmRssi, lat / 10000000, lat % 10000000, lon / 10000000, lon % 10000000);
     serialWriteBuf(gsmPort, atCommand, len);
     atCommandStatus = GSM_AT_WAITING_FOR_RESPONSE;
@@ -268,11 +264,16 @@ void freeGsmTelemetryPort(void)
 
 void initGsmTelemetry(void)
 {
-#ifdef GSM_TEST_SETTINGS
-    cliSerial("2 16 115200 38400 9600 115200"); // 2=USART3 16=LTM
-//    cliSerial("5 32768 115200 38400 9600 115200"); // 5=USART6
-#endif
     portConfig = findSerialPortConfig(FUNCTION_TELEMETRY_GSM);
+#ifdef GSM_TEST_SETTINGS
+    if (!portConfig) {
+        featureSet(FEATURE_DEBUG_TRACE);
+        cliSerial("2 131072 115200 38400 9600 115200"); // 2=USART3
+        cliSerial("5 32768 115200 115200 115200 115200"); // 5=USART6
+        writeEEPROM();
+        fcReboot(false);
+    }
+#endif
 }
 
 void checkGsmTelemetryState(void)
@@ -291,19 +292,12 @@ void configureGsmTelemetryPort(void)
     }
     baudRate_e baudRateIndex = portConfig->telemetry_baudrateIndex;
     gsmPort = openSerialPort(portConfig->identifier, FUNCTION_TELEMETRY_GSM, NULL, NULL, baudRates[baudRateIndex], MODE_RXTX, SERIAL_NOT_INVERTED);
-//    gsmPort = openSerialPort(SERIAL_PORT_USART3, FUNCTION_TELEMETRY_LTM, NULL, NULL, baudRates[BAUD_9600], MODE_RXTX, SERIAL_NOT_INVERTED);
-    if (!gsmPort)
-        return;
-    gsmEnabled = true;
 
-#ifdef GSM_TEST_SETTINGS
-    if (tracePort) {
-        debugPort = tracePort;
-    } else {
-        featureSet(FEATURE_DEBUG_TRACE);
-        debugPort = openSerialPort(SERIAL_PORT_USART6, FUNCTION_DEBUG_TRACE, NULL, NULL,
-            baudRates[BAUD_115200], MODE_RXTX, SERIAL_NOT_INVERTED);
-        tracePort = debugPort;
+    if (!gsmPort) {
+        return;
     }
-#endif
+    gsmEnabled = true;
+    if (gsmGroundStationNumber[0] != '\0') {
+        gsmDoTestDial = true;
+    }
 }
