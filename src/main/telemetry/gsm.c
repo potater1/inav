@@ -83,7 +83,9 @@ bool isGroundStationNumberDefined() {
 
 void readGsmResponse()
 {
+#ifdef GSM_TEST_SETTINGS
     DEBUG_TRACE_SYNC("%s", gsmResponse);
+#endif
     if (readingSMS) {
         readingSMS = false;
         readSMS();
@@ -93,17 +95,23 @@ void readGsmResponse()
         if (!gsmWaitAfterResponse) {
             gsmNextTime = millis() + GSM_AT_COMMAND_DELAY_MIN_MS;
         }
+#ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>OK");
+#endif
         return;
     } else if (gsmResponse[0] == 'E' && gsmResponse[1] == 'R') {
         atCommandStatus = GSM_AT_ERROR;
         if (!gsmWaitAfterResponse) {
             gsmNextTime = millis() + GSM_AT_COMMAND_DELAY_MIN_MS;
         }
+#ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>ERR");
+#endif
         return;
     } else if (gsmResponse[0] == 'R' && gsmResponse[1] == 'I') {        
+#ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>RING");
+#endif
         if (isGroundStationNumberDefined()) {
             gsmTelemetryState = GSM_STATE_SEND_SMS;
         }
@@ -123,7 +131,9 @@ void readGsmResponseData()
     if (gsmResponse[1] == 'C' && gsmResponse[2] == 'S') {
         // +CSQ: 26,0
         gsmRssi = atoi((char*)gsmResponseValue);
+#ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>RSSI:%d", gsmRssi);
+#endif
     } else if (gsmResponse[1] == 'C' && gsmResponse[2] == 'L') {
         // +CLIP: "3581234567"
         readOriginatingNumber(&gsmResponse[8]);
@@ -143,21 +153,29 @@ void readOriginatingNumber(uint8_t* rv)
     for (i = 0; i < 15 && rv[i] != '\"'; i++)
          gsn[i] = rv[i];
     gsn[i] = '\0';
+#ifdef GSM_TEST_SETTINGS
     DEBUG_TRACE_SYNC(">>>NUM:%s",(char*)gsn);
+#endif
 }
 
 void readSMS()
 {
+#ifdef GSM_TEST_SETTINGS
     DEBUG_TRACE_SYNC(">>>SMS:\"%s\"", gsmResponse);
-    if (sl_strcasecmp((char*)gsmResponse,GSM_SMS_COMMAND_TELEMETRY) == 0) {
-        gsmTelemetryState = GSM_STATE_SEND_SMS;
-    } else if (sl_strcasecmp((char*)gsmResponse,GSM_SMS_COMMAND_RTH) == 0) {
+#endif
+    if (sl_strcasecmp((char*)gsmResponse,GSM_SMS_COMMAND_RTH) == 0) {
+#ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>SMS: FORCED RTH");
+#endif
         activateForcedRTH();
     } else if (sl_strcasecmp((char*)gsmResponse,GSM_SMS_COMMAND_ABORT_RTH) == 0) {
+#ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>SMS: ABORT FORCED RTH");
+#endif
         abortForcedRTH();
     }
+    gsmTelemetryState = GSM_STATE_SEND_SMS;
+
 }
 
 void handleGsmTelemetry()
@@ -194,7 +212,9 @@ void handleGsmTelemetry()
     gsmWaitAfterResponse = false;   // by default, if OK or ERROR received, go to next state immediately.
     switch (gsmTelemetryState) {
         case GSM_STATE_INIT:
+#ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC("GSM INIT");
+#endif
         sendATCommand("AT\n");
         gsmTelemetryState = GSM_STATE_INIT2;
         break;
