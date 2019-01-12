@@ -1502,6 +1502,10 @@ groups:
         field: ltmUpdateRate
         condition: USE_TELEMETRY_LTM
         table: ltm_rates
+      - name: gsm_ground_station_number
+        field: gsmGroundStationNumber
+        type: string
+        max: 16
 
   - name: PG_ELERES_CONFIG
     type: eleresConfig_t
