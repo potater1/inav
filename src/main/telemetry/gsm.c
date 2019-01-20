@@ -50,7 +50,7 @@
 #include "build/debug.h"
 
 
-//#define GSM_TEST_SETTINGS
+#define GSM_TEST_SETTINGS
 
 #ifdef GSM_TEST_SETTINGS
 void cliSerial(char *cmdline);
@@ -316,9 +316,10 @@ void sendSMS()
     int avgSpeed = (int)round(10 * calculateAverageSpeed());
     int32_t E7 = 10000000;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld TDIST:%d AVGSPD:%d.%d SATS:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1a",
-        vbat, alt / 100, GPS_distanceToHome, gs, getTotalTravelDistance(), avgSpeed / 10, avgSpeed % 10, gpsSol.numSat, gsmRssi,
-        lat / E7, lat % E7, lon / E7, lon % E7, getFlightModeForTelemetry());
+    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld TDIST:%d AVGSPD:%d.%d SATS:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1b",
+        vbat, alt / 100, GPS_distanceToHome, gs, getTotalTravelDistance(), avgSpeed / 10, avgSpeed % 10,
+        gpsSol.numSat, gsmRssi, getFlightModeForTelemetry(),
+        lat / E7, lat % E7, lon / E7, lon % E7);
     serialWriteBuf(gsmPort, atCommand, len);
     atCommandStatus = GSM_AT_WAITING_FOR_RESPONSE;
 }
