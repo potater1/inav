@@ -50,7 +50,7 @@
 #include "build/debug.h"
 
 
-#define GSM_TEST_SETTINGS
+//#define GSM_TEST_SETTINGS
 
 #ifdef GSM_TEST_SETTINGS
 void cliSerial(char *cmdline);
@@ -65,7 +65,6 @@ static int gsmTelemetryState = GSM_STATE_INIT;
 static timeUs_t gsmNextTime = 0;
 static uint8_t gsmResponse[GSM_RESPONSE_BUFFER_SIZE + 1];
 static int atCommandStatus = GSM_AT_OK;
-static uint8_t* gsmResponseValue = NULL;
 static bool gsmWaitAfterResponse = false;
 static bool readingSMS = false;
 
@@ -89,8 +88,24 @@ void readGsmResponse()
     if (readingSMS) {
         readingSMS = false;
         readSMS();
+        return;
     }
-    if (gsmResponse[0] == 'O' && gsmResponse[1] == 'K') {
+
+    uint8_t* resp = gsmResponse;
+    uint32_t responseCode = 0;
+    if (gsmResponse[0] == '+') {
+        resp++;
+    }
+    responseCode = *resp++;
+    responseCode <<= 8; responseCode |= *resp++;
+    responseCode <<= 8; responseCode |= *resp++;
+    responseCode <<= 8; responseCode |= *resp++;
+
+#ifdef GSM_TEST_SETTINGS
+    DEBUG_TRACE_SYNC("***RC: %d", responseCode);
+#endif
+    if (responseCode == GSM_RESPONSE_CODE_OK) {
+        // OK
         atCommandStatus = GSM_AT_OK;
         if (!gsmWaitAfterResponse) {
             gsmNextTime = millis() + GSM_AT_COMMAND_DELAY_MIN_MS;
@@ -99,7 +114,8 @@ void readGsmResponse()
         DEBUG_TRACE_SYNC(">>>OK");
 #endif
         return;
-    } else if (gsmResponse[0] == 'E' && gsmResponse[1] == 'R') {
+    } else if (responseCode == GSM_RESPONSE_CODE_ERROR) {
+        // ERROR
         atCommandStatus = GSM_AT_ERROR;
         if (!gsmWaitAfterResponse) {
             gsmNextTime = millis() + GSM_AT_COMMAND_DELAY_MIN_MS;
@@ -108,36 +124,24 @@ void readGsmResponse()
         DEBUG_TRACE_SYNC(">>>ERR");
 #endif
         return;
-    } else if (gsmResponse[0] == 'R' && gsmResponse[1] == 'I') {        
+    } else if (responseCode == GSM_RESPONSE_CODE_RING) {
+        // RING
 #ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>RING");
 #endif
         if (isGroundStationNumberDefined()) {
             gsmTelemetryState = GSM_STATE_SEND_SMS;
         }
-    } else if (gsmResponse[0] == '+') {
-        int i;
-        for (i = 0; i < GSM_RESPONSE_BUFFER_SIZE && gsmResponse[i] != ':'; i++);
-        if (gsmResponse[i] == ':') {
-            gsmResponseValue = &gsmResponse[i+2];
-            readGsmResponseData();
-        }
-        return;
-    }
-}
-
-void readGsmResponseData()
-{
-    if (gsmResponse[1] == 'C' && gsmResponse[2] == 'S') {
+    } else if (responseCode == GSM_RESPONSE_CODE_CSQ) {
         // +CSQ: 26,0
-        gsmRssi = atoi((char*)gsmResponseValue);
+        gsmRssi = atoi((char*)&gsmResponse[6]);
 #ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>RSSI:%d", gsmRssi);
 #endif
-    } else if (gsmResponse[1] == 'C' && gsmResponse[2] == 'L') {
+    } else if (responseCode == GSM_RESPONSE_CODE_CLIP) {
         // +CLIP: "3581234567"
         readOriginatingNumber(&gsmResponse[8]);
-    } else if (gsmResponse[1] == 'C' && gsmResponse[2] == 'M') {
+    } else if (responseCode == GSM_RESPONSE_CODE_CMT) {
         // +CMT: <oa>,[<alpha>],<scts>[,<tooa>,<fo>,<pid>,<dcs>,<sca>,<tosca>,<length>]<CR><LF><data>
         readOriginatingNumber(&gsmResponse[7]);
         readingSMS = true; // next gsmResponse line will be SMS content
@@ -205,8 +209,6 @@ void handleGsmTelemetry()
 
     if (now < gsmNextTime)
         return;
-
-//    DEBUG_TRACE_SYNC("gs num: #%s#",telemetryConfigMutable()->gsmGroundStationNumber);
 
     gsmNextTime = now + GSM_AT_COMMAND_DELAY_MS;       // by default, if OK or ERROR not received, wait this long
     gsmWaitAfterResponse = false;   // by default, if OK or ERROR received, go to next state immediately.
@@ -316,7 +318,7 @@ void sendSMS()
     int avgSpeed = (int)round(10 * calculateAverageSpeed());
     int32_t E7 = 10000000;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld TDIST:%d AVGSPD:%d.%d SATS:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1b",
+    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld TDIST:%d AVGSPD:%d.%d SATS:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1a",
         vbat, alt / 100, GPS_distanceToHome, gs, getTotalTravelDistance(), avgSpeed / 10, avgSpeed % 10,
         gpsSol.numSat, gsmRssi, getFlightModeForTelemetry(),
         lat / E7, lat % E7, lon / E7, lon % E7);

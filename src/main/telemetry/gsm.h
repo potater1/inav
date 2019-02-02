@@ -11,6 +11,13 @@
 #define GSM_SMS_COMMAND_RTH 		"RTH"
 #define GSM_SMS_COMMAND_ABORT_RTH 	"-RTH"
 
+#define GSM_RESPONSE_CODE_OK    ('O' << 24 | 'K' << 16)
+#define GSM_RESPONSE_CODE_ERROR ('E' << 24 | 'R' << 16 | 'R' << 8 | 'O')
+#define GSM_RESPONSE_CODE_RING  ('R' << 24 | 'I' << 16 | 'N' << 8 | 'G')
+#define GSM_RESPONSE_CODE_CLIP  ('C' << 24 | 'L' << 16 | 'I' << 8 | 'P')
+#define GSM_RESPONSE_CODE_CSQ   ('C' << 24 | 'S' << 16 | 'Q' << 8 | ':')
+#define GSM_RESPONSE_CODE_CMT   ('C' << 24 | 'M' << 16 | 'T' << 8 | ':')
+
 typedef enum  {
     GSM_STATE_INIT = 0,
     GSM_STATE_INIT2,
@@ -37,7 +44,6 @@ typedef enum  {
 
 
 void readGsmResponse(void);
-void readGsmResponseData(void);
 void handleGsmTelemetry();
 void freeGsmTelemetryPort(void);
 void initGsmTelemetry(void);
