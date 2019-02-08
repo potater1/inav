@@ -300,7 +300,9 @@ void sendATCommand(const char* command)
 void sendSMS()
 {
     int32_t lat = 0, lon = 0, alt = 0, gs = 0;
-    int vbat = 0;
+    int vbat = getBatteryVoltage();
+    int16_t amps = isAmperageConfigured() ? getAmperage() / 10 : 0; // 1 = 100 milliamps
+    int avgSpeed = (int)round(10 * calculateAverageSpeed());
 
     if (sensors(SENSOR_GPS)) {
         lat = gpsSol.llh.lat;
@@ -313,13 +315,15 @@ void sendSMS()
     alt = sensors(SENSOR_GPS) ? gpsSol.llh.alt : 0; // cm
 #endif
 //    lat = 651231237;    lon = 243213216;
-    vbat = getBatteryVoltage() * 10;    //vbat converted to mv
     int len;
-    int avgSpeed = (int)round(10 * calculateAverageSpeed());
     int32_t E7 = 10000000;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "VBAT:%d ALT:%ld DIST:%d SPEED:%ld TDIST:%d AVGSPD:%d.%d SATS:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1a",
-        vbat, alt / 100, GPS_distanceToHome, gs, getTotalTravelDistance(), avgSpeed / 10, avgSpeed % 10,
+    len = tfp_sprintf((char*)atCommand, "%d.%dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1a",
+        vbat / 100, vbat % 100,
+        amps / 10, amps % 10,
+        alt / 100,
+        gs, avgSpeed / 10, avgSpeed % 10,
+        GPS_distanceToHome, getTotalTravelDistance() / 100,
         gpsSol.numSat, gsmRssi, getFlightModeForTelemetry(),
         lat / E7, lat % E7, lon / E7, lon % E7);
     serialWriteBuf(gsmPort, atCommand, len);
