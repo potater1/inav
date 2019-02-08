@@ -50,6 +50,7 @@ void initGsmTelemetry(void);
 void checkGsmTelemetryState(void);
 void configureGsmTelemetryPort(void);
 void sendATCommand(const char* command);
+void requestSendSMS();
 void sendSMS(void);
 void readSMS(void);
 void readOriginatingNumber(uint8_t*);

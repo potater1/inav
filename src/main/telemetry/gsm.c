@@ -80,6 +80,13 @@ bool isGroundStationNumberDefined() {
     return telemetryConfigMutable()->gsmGroundStationNumber[0] != '\0';
 }
 
+void requestSendSMS()
+{
+    if (gsmTelemetryState == GSM_STATE_SEND_SMS_ENTER_MESSAGE)
+        return; // sending right now, don't reissue AT command
+    gsmTelemetryState = GSM_STATE_SEND_SMS;
+}
+
 void readGsmResponse()
 {
 #ifdef GSM_TEST_SETTINGS
@@ -130,7 +137,7 @@ void readGsmResponse()
         DEBUG_TRACE_SYNC(">>>RING");
 #endif
         if (isGroundStationNumberDefined()) {
-            gsmTelemetryState = GSM_STATE_SEND_SMS;
+            requestSendSMS();
         }
     } else if (responseCode == GSM_RESPONSE_CODE_CSQ) {
         // +CSQ: 26,0
@@ -178,8 +185,7 @@ void readSMS()
 #endif
         abortForcedRTH();
     }
-    gsmTelemetryState = GSM_STATE_SEND_SMS;
-
+    requestSendSMS();
 }
 
 void handleGsmTelemetry()
