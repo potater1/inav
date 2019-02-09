@@ -1506,6 +1506,11 @@ groups:
         field: gsmGroundStationNumber
         type: string
         max: 16
+      - name: gsm_transmission_interval
+        field: gsmTransmissionInterval
+        type: int16_t
+        min: -32768
+        max: 32767
 
   - name: PG_ELERES_CONFIG
     type: eleresConfig_t

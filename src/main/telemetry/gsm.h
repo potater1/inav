@@ -5,11 +5,13 @@
 #define GSM_AT_COMMAND_MAX_SIZE 256
 #define GSM_RESPONSE_BUFFER_SIZE 256
 #define GSM_CYCLE_MS 5000 								// wait between gsm command cycles
+#define GSM_MIN_TRANSMISSION_INTERVAL 5
 #define GSM_AT_COMMAND_DELAY_MS 3000
 #define GSM_AT_COMMAND_DELAY_MIN_MS 500
-
-#define GSM_SMS_COMMAND_RTH 		"RTH"
-#define GSM_SMS_COMMAND_ABORT_RTH 	"-RTH"
+#define GSM_DEFAULT_TRANSMISSION_INTERVAL -60           // negative value: transmission off
+#define GSM_SMS_COMMAND_TRANSMISSION    "T"
+#define GSM_SMS_COMMAND_RTH             "RTH"
+#define GSM_SMS_COMMAND_ABORT_RTH       "-RTH"
 
 #define GSM_RESPONSE_CODE_OK    ('O' << 24 | 'K' << 16)
 #define GSM_RESPONSE_CODE_ERROR ('E' << 24 | 'R' << 16 | 'R' << 8 | 'O')
@@ -51,6 +53,7 @@ void checkGsmTelemetryState(void);
 void configureGsmTelemetryPort(void);
 void sendATCommand(const char* command);
 void requestSendSMS();
+void handleTransmission();
 void sendSMS(void);
 void readSMS(void);
 void readOriginatingNumber(uint8_t*);

@@ -85,6 +85,8 @@ void requestSendSMS()
     if (gsmTelemetryState == GSM_STATE_SEND_SMS_ENTER_MESSAGE)
         return; // sending right now, don't reissue AT command
     gsmTelemetryState = GSM_STATE_SEND_SMS;
+    if (atCommandStatus != GSM_AT_WAITING_FOR_RESPONSE)
+        gsmNextTime = 0; // send immediately
 }
 
 void readGsmResponse()
@@ -174,18 +176,35 @@ void readSMS()
 #ifdef GSM_TEST_SETTINGS
     DEBUG_TRACE_SYNC(">>>SMS:\"%s\"", gsmResponse);
 #endif
-    if (sl_strcasecmp((char*)gsmResponse,GSM_SMS_COMMAND_RTH) == 0) {
+    if (sl_strcasecmp((char*)gsmResponse, GSM_SMS_COMMAND_TRANSMISSION) == 0) {
+        telemetryConfigMutable()->gsmTransmissionInterval *= -1;
+        return;
+    } else if (sl_strcasecmp((char*)gsmResponse, GSM_SMS_COMMAND_RTH) == 0) {
+        activateForcedRTH();
 #ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>SMS: FORCED RTH");
 #endif
-        activateForcedRTH();
-    } else if (sl_strcasecmp((char*)gsmResponse,GSM_SMS_COMMAND_ABORT_RTH) == 0) {
+    } else if (sl_strcasecmp((char*)gsmResponse, GSM_SMS_COMMAND_ABORT_RTH) == 0) {
+        abortForcedRTH();
 #ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>SMS: ABORT FORCED RTH");
 #endif
-        abortForcedRTH();
     }
     requestSendSMS();
+}
+
+void handleTransmission()
+{
+    static uint32_t t_nextMessage = 0;
+
+    uint32_t now = millis();
+
+    if (!ARMING_FLAG(ARMED) || telemetryConfigMutable()->gsmTransmissionInterval < GSM_MIN_TRANSMISSION_INTERVAL) {
+        t_nextMessage = 0;
+    } else if (now > t_nextMessage) {
+        requestSendSMS();
+        t_nextMessage = now + 1000 * telemetryConfigMutable()->gsmTransmissionInterval;
+    }
 }
 
 void handleGsmTelemetry()
@@ -212,6 +231,8 @@ void handleGsmTelemetry()
             return;
         }
     }
+
+    handleTransmission();
 
     if (now < gsmNextTime)
         return;
@@ -324,7 +345,7 @@ void sendSMS()
     int len;
     int32_t E7 = 10000000;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "%d.%dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1a",
+    len = tfp_sprintf((char*)atCommand, "%d.%02dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d MODE:%d google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1b",
         vbat / 100, vbat % 100,
         amps / 10, amps % 10,
         alt / 100,
@@ -333,6 +354,7 @@ void sendSMS()
         gpsSol.numSat, gsmRssi, getFlightModeForTelemetry(),
         lat / E7, lat % E7, lon / E7, lon % E7);
     serialWriteBuf(gsmPort, atCommand, len);
+    DEBUG_TRACE_SYNC("%s",atCommand);
     atCommandStatus = GSM_AT_WAITING_FOR_RESPONSE;
 }
 
