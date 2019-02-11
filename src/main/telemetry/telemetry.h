@@ -69,6 +69,9 @@ typedef struct telemetryConfig_s {
     uint8_t ibusTelemetryType;
     uint8_t ltmUpdateRate;
     int16_t gsmTransmissionInterval;
+    uint16_t accEventThresholdHigh;
+    uint16_t accEventThresholdLow;
+    uint16_t accEventThresholdNegX;
     uint8_t gsmGroundStationNumber[16];
 } telemetryConfig_t;
 

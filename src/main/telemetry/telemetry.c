@@ -67,7 +67,10 @@ PG_RESET_TEMPLATE(telemetryConfig_t, telemetryConfig,
     .smartportFuelUnit = SMARTPORT_FUEL_UNIT_MAH,
     .ibusTelemetryType = 0,
     .ltmUpdateRate = LTM_RATE_NORMAL,
-    .gsmTransmissionInterval = GSM_DEFAULT_TRANSMISSION_INTERVAL
+    .gsmTransmissionInterval = GSM_DEFAULT_TRANSMISSION_INTERVAL,
+    .accEventThresholdHigh = 0,
+    .accEventThresholdLow = 0,
+    .accEventThresholdNegX = 0
 );
 
 void telemetryInit(void)

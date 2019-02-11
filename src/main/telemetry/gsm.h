@@ -1,7 +1,5 @@
-#include "io/gps.h"
-#include "io/serial.h"
-
 //#define GSM_TEST_SETTINGS
+
 #define GSM_AT_COMMAND_MAX_SIZE 256
 #define GSM_RESPONSE_BUFFER_SIZE 256
 #define GSM_CYCLE_MS 5000 								// wait between gsm command cycles
@@ -12,6 +10,7 @@
 #define GSM_SMS_COMMAND_TRANSMISSION    "T"
 #define GSM_SMS_COMMAND_RTH             "RTH"
 #define GSM_SMS_COMMAND_ABORT_RTH       "-RTH"
+#define GSM_PIN "0000"
 
 #define GSM_RESPONSE_CODE_OK    ('O' << 24 | 'K' << 16)
 #define GSM_RESPONSE_CODE_ERROR ('E' << 24 | 'R' << 16 | 'R' << 8 | 'O')
@@ -35,7 +34,6 @@ typedef enum  {
     GSM_STATE_SEND_SMS_ENTER_MESSAGE,
     GSM_STATE_CHECK_SIGNAL,
     GSM_STATE_CHECK_SIGNAL2
-
 } gsmTelemetryState_e;
 
 typedef enum  {
@@ -43,6 +41,13 @@ typedef enum  {
     GSM_AT_ERROR,
     GSM_AT_WAITING_FOR_RESPONSE
 } gsmATCommandState_e;
+
+typedef enum {
+    ACC_EVENT_NONE = 0,
+    ACC_EVENT_HIGH,
+    ACC_EVENT_LOW,
+    ACC_EVENT_NEG_X
+} accEvent_t;
 
 
 void readGsmResponse(void);
@@ -53,11 +58,9 @@ void checkGsmTelemetryState(void);
 void configureGsmTelemetryPort(void);
 void sendATCommand(const char* command);
 void requestSendSMS();
-void handleTransmission();
+void detectAccEvents();
+void transmit();
 void sendSMS(void);
 void readSMS(void);
 void readOriginatingNumber(uint8_t*);
 bool isGroundStationNumberDefined();
-
-
-
