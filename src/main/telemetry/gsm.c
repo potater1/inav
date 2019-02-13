@@ -55,6 +55,7 @@ static uint8_t gsmResponse[GSM_RESPONSE_BUFFER_SIZE + 1];
 static int atCommandStatus = GSM_AT_OK;
 static bool gsmWaitAfterResponse = false;
 static bool readingSMS = false;
+static bool failsafeMessageSent = false;
 
 int gsmRssi;
 uint32_t t_accEventDetected = 0;
@@ -71,7 +72,14 @@ extern navigationPosControl_t  posControl;
 
 
 bool isGroundStationNumberDefined() {
-    return telemetryConfigMutable()->gsmGroundStationNumber[0] != '\0';
+    return telemetryConfig()->gsmGroundStationNumber[0] != '\0';
+}
+
+bool checkGroundStationNumber(uint8_t* rv) {
+    if (strlen((char*)telemetryConfig()->gsmGroundStationNumber) == 0) return false;
+    for (int i = 0; i < 16 && rv[i] != '\"'; i++)
+        if (telemetryConfig()->gsmGroundStationNumber[i] != rv[i]) return false;
+    return true;
 }
 
 void requestSendSMS()
@@ -89,8 +97,8 @@ void readGsmResponse()
     DEBUG_TRACE_SYNC("%s", gsmResponse);
 #endif
     if (readingSMS) {
-        readingSMS = false;
         readSMS();
+        readingSMS = false;
         return;
     }
 
@@ -132,9 +140,6 @@ void readGsmResponse()
 #ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC(">>>RING");
 #endif
-        if (isGroundStationNumberDefined()) {
-            requestSendSMS();
-        }
     } else if (responseCode == GSM_RESPONSE_CODE_CSQ) {
         // +CSQ: 26,0
         gsmRssi = fastA2I((char*)&gsmResponse[6]);
@@ -142,12 +147,24 @@ void readGsmResponse()
         DEBUG_TRACE_SYNC(">>>RSSI:%d", gsmRssi);
 #endif
     } else if (responseCode == GSM_RESPONSE_CODE_CLIP) {
-        // +CLIP: "3581234567"
+        // we always get this after a RING when a call is incoming
+        // +CLIP: "+3581234567"
         readOriginatingNumber(&gsmResponse[8]);
+        if (checkGroundStationNumber(&gsmResponse[8])) {
+            requestSendSMS();
+        }
     } else if (responseCode == GSM_RESPONSE_CODE_CMT) {
         // +CMT: <oa>,[<alpha>],<scts>[,<tooa>,<fo>,<pid>,<dcs>,<sca>,<tosca>,<length>]<CR><LF><data>
+        // +CMT: "+3581234567","","19/02/12,14:57:24+08"
         readOriginatingNumber(&gsmResponse[7]);
-        readingSMS = true; // next gsmResponse line will be SMS content
+        if (checkGroundStationNumber(&gsmResponse[7])) {
+            readingSMS = true; // next gsmResponse line will be SMS content
+        } else {
+            // skip SMS content
+            while (serialRxBytesWaiting(gsmPort)) {
+                if (serialRead(gsmPort) == '\n') return;
+            }
+        }
     }
 }
 
@@ -214,23 +231,33 @@ void detectAccEvents()
     }
 }
 
+void detectFailsafe()
+{
+    if (!failsafeMessageSent && FLIGHT_MODE(FAILSAFE_MODE) && ARMING_FLAG(ARMED)) {
+        failsafeMessageSent = true;        
+        requestSendSMS();
+    }
+    if (!ARMING_FLAG(ARMED))
+        failsafeMessageSent = false;
+}
+
 void transmit()
 {
     static uint32_t t_nextMessage = 0;
 
     uint32_t now = millis();
 
-    if (!ARMING_FLAG(ARMED) || telemetryConfigMutable()->gsmTransmissionInterval < GSM_MIN_TRANSMISSION_INTERVAL) {
+    if (!ARMING_FLAG(ARMED) || telemetryConfig()->gsmTransmissionInterval < GSM_MIN_TRANSMISSION_INTERVAL) {
         t_nextMessage = 0;
     } else if (now > t_nextMessage) {
         requestSendSMS();
-        t_nextMessage = now + 1000 * telemetryConfigMutable()->gsmTransmissionInterval;
+        t_nextMessage = now + 1000 * telemetryConfig()->gsmTransmissionInterval;
     }
 }
 
 void handleGsmTelemetry()
 {
-    static int ri = 0;
+    static uint16_t gsmResponseIndex = 0;
     uint32_t now = millis();
 
     if (!gsmEnabled)
@@ -238,22 +265,23 @@ void handleGsmTelemetry()
     if (!gsmPort)
         return;
 
-    uint8_t c;
-    for (; serialRxBytesWaiting(gsmPort); ri++) {
-        c = serialRead(gsmPort);
-        gsmResponse[ri] = c;
-        if (c == '\n' || ri == GSM_RESPONSE_BUFFER_SIZE) {
-            // response line expected to end in \r\n, remove them
-            gsmResponse[ri] = '\0';
-            if (ri > 0)
-                gsmResponse[--ri] = '\0';
+    while (serialRxBytesWaiting(gsmPort) > 0) {
+        uint8_t c = serialRead(gsmPort);
+        if (c == '\n' || gsmResponseIndex == GSM_RESPONSE_BUFFER_SIZE) {
+            gsmResponse[gsmResponseIndex] = '\0';
+            if (gsmResponseIndex > 0) gsmResponseIndex--;
+            if (gsmResponse[gsmResponseIndex] == '\r') gsmResponse[gsmResponseIndex] = '\0';
+            gsmResponseIndex = 0; //data ok
             readGsmResponse();
-            ri = 0;
-            return;
+            break;
+        } else {
+            gsmResponse[gsmResponseIndex] = c;
+            gsmResponseIndex++;
         }
     }
 
     detectAccEvents();
+    detectFailsafe();
     transmit();
 
     if (now < gsm_t_stateChange)
@@ -266,28 +294,31 @@ void handleGsmTelemetry()
 #ifdef GSM_TEST_SETTINGS
         DEBUG_TRACE_SYNC("GSM INIT");
 #endif
-        sendATCommand("AT\n");
+        sendATCommand("AT\r");
+        gsmTelemetryState = GSM_STATE_INIT2;
+        break;
+        case GSM_STATE_INIT2: sendATCommand("ATE0\r");
         gsmTelemetryState = GSM_STATE_INIT_ENTER_PIN;
         break;
         case GSM_STATE_INIT_ENTER_PIN:
-        sendATCommand("AT+CPIN=" GSM_PIN "\n");
+        sendATCommand("AT+CPIN=" GSM_PIN "\r");
         gsmTelemetryState = GSM_STATE_INIT_SET_SMS_MODE;
         break;
         case GSM_STATE_INIT_SET_SMS_MODE:
-        sendATCommand("AT+CMGF=1\n");
+        sendATCommand("AT+CMGF=1\r");
         gsmTelemetryState = GSM_STATE_INIT_SET_SMS_RECEIVE_MODE;
         break;
         case GSM_STATE_INIT_SET_SMS_RECEIVE_MODE:
-        sendATCommand("AT+CNMI=3,2\n"); // SMS read and delete not needed with CNMI=3,2
+        sendATCommand("AT+CNMI=3,2\r"); // SMS read and delete not needed with CNMI=3,2
         gsmTelemetryState = GSM_STATE_INIT_SET_CLIP;
         break;
         case GSM_STATE_INIT_SET_CLIP:
-        sendATCommand("AT+CLIP=1\n");
+        sendATCommand("AT+CLIP=1\r");
         gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
         break;
         case GSM_STATE_SEND_SMS:
         sendATCommand("AT+CMGS=\"");
-        sendATCommand((char*)telemetryConfigMutable()->gsmGroundStationNumber);
+        sendATCommand((char*)telemetryConfig()->gsmGroundStationNumber);
         sendATCommand("\"\r");
         gsmTelemetryState = GSM_STATE_SEND_SMS_ENTER_MESSAGE;
         gsm_t_stateChange = now + 100;
@@ -297,32 +328,32 @@ void handleGsmTelemetry()
         gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
         break;
         case GSM_STATE_CHECK_SIGNAL:
-        sendATCommand("AT+CSQ\n");
+        sendATCommand("AT+CSQ\r");
         gsm_t_stateChange = now + GSM_CYCLE_MS;
         gsmWaitAfterResponse = true;
         gsmTelemetryState = GSM_STATE_INIT;
         break;
 /*
         case GSM_STATE_READ_SMS:
-        sendATCommand("AT+CMGL=\"ALL\"\n");         // list all, REC UNREAD lists unread
+        sendATCommand("AT+CMGL=\"ALL\"\r");         // list all, REC UNREAD lists unread
         gsm_t_stateChange = now + 5000;
         gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
         break;
         case GSM_STATE_DELETE_SMS:
-        sendATCommand("AT+CMGD=1,1\n"); // ,1 : delete all read messages, max response time 5 s (delete 1 msg)
+        sendATCommand("AT+CMGD=1,1\r"); // ,1 : delete all read messages, max response time 5 s (delete 1 msg)
         gsm_t_stateChange = now + 5000;
         gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
         break;
         case GSM_STATE_DIAL:
         sendATCommand("ATD+");
         sendATCommand((char*)gsmGroundStationNumber);
-        sendATCommand(";\n");
+        sendATCommand(";\r");
         gsm_t_stateChange = now + GSM_DIAL_WAIT_MS;
         gsmWaitAfterResponse = true;
         gsmTelemetryState = GSM_STATE_DIAL_HANGUP;
         break;
         case GSM_STATE_DIAL_HANGUP:
-        sendATCommand("ATH\n");
+        sendATCommand("ATH\r");
         gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
         break;
 */
@@ -361,7 +392,7 @@ void sendSMS()
     int len;
     int32_t E7 = 10000000;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "%s%d.%02dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d %s google.com/maps/@%ld.%07ld,%ld.%07ld,500m\x1a",
+    len = tfp_sprintf((char*)atCommand, "%s%d.%02dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d %s google.com/maps/place/%ld.%07ld,%ld.%07ld,500m\x1b",
         (now - t_accEventDetected) < 5000 ? accEventDescriptions[accEvent] : "",
         vbat / 100, vbat % 100,
         amps / 10, amps % 10,
@@ -372,6 +403,7 @@ void sendSMS()
         posControl.flags.forcedRTHActivated ? "RTH" : modeDescriptions[getFlightModeForTelemetry()],
         lat / E7, lat % E7, lon / E7, lon % E7);
     serialWriteBuf(gsmPort, atCommand, len);
+    DEBUG_TRACE_SYNC("%s", atCommand);
     atCommandStatus = GSM_AT_WAITING_FOR_RESPONSE;
 }
 
