@@ -76,9 +76,14 @@ bool isGroundStationNumberDefined() {
 }
 
 bool checkGroundStationNumber(uint8_t* rv) {
-    if (strlen((char*)telemetryConfig()->gsmGroundStationNumber) == 0) return false;
+    const uint8_t* gsn = telemetryConfig()->gsmGroundStationNumber;
+    if (strlen((char*)gsn) == 0) return false;
+    if (gsn[0] == '+')
+        gsn++;
+    if (rv[0] == '+')
+        rv++;
     for (int i = 0; i < 16 && rv[i] != '\"'; i++)
-        if (telemetryConfig()->gsmGroundStationNumber[i] != rv[i]) return false;
+        if (gsn[i] != rv[i]) return false;
     return true;
 }
 
@@ -297,24 +302,18 @@ void handleGsmTelemetry()
         sendATCommand("AT\r");
         gsmTelemetryState = GSM_STATE_INIT2;
         break;
-        case GSM_STATE_INIT2: sendATCommand("ATE0\r");
+        case GSM_STATE_INIT2:
+        sendATCommand("ATE0\r");
         gsmTelemetryState = GSM_STATE_INIT_ENTER_PIN;
         break;
         case GSM_STATE_INIT_ENTER_PIN:
         sendATCommand("AT+CPIN=" GSM_PIN "\r");
-        gsmTelemetryState = GSM_STATE_INIT_SET_SMS_MODE;
+        gsmTelemetryState = GSM_STATE_SET_MODES;
         break;
-        case GSM_STATE_INIT_SET_SMS_MODE:
-        sendATCommand("AT+CMGF=1\r");
-        gsmTelemetryState = GSM_STATE_INIT_SET_SMS_RECEIVE_MODE;
-        break;
-        case GSM_STATE_INIT_SET_SMS_RECEIVE_MODE:
-        sendATCommand("AT+CNMI=3,2\r"); // SMS read and delete not needed with CNMI=3,2
-        gsmTelemetryState = GSM_STATE_INIT_SET_CLIP;
-        break;
-        case GSM_STATE_INIT_SET_CLIP:
-        sendATCommand("AT+CLIP=1\r");
-        gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
+        case GSM_STATE_SET_MODES:
+        sendATCommand("AT+CMGF=1;+CNMI=3,2;+CLIP=1;+CSQ\r");
+        gsmTelemetryState = GSM_STATE_INIT;
+        gsm_t_stateChange = now + GSM_CYCLE_MS;
         break;
         case GSM_STATE_SEND_SMS:
         sendATCommand("AT+CMGS=\"");
@@ -325,38 +324,9 @@ void handleGsmTelemetry()
         break;
         case GSM_STATE_SEND_SMS_ENTER_MESSAGE:
         sendSMS();
-        gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
-        break;
-        case GSM_STATE_CHECK_SIGNAL:
-        sendATCommand("AT+CSQ\r");
-        gsm_t_stateChange = now + GSM_CYCLE_MS;
-        gsmWaitAfterResponse = true;
         gsmTelemetryState = GSM_STATE_INIT;
+        gsm_t_stateChange = now + GSM_CYCLE_MS;
         break;
-/*
-        case GSM_STATE_READ_SMS:
-        sendATCommand("AT+CMGL=\"ALL\"\r");         // list all, REC UNREAD lists unread
-        gsm_t_stateChange = now + 5000;
-        gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
-        break;
-        case GSM_STATE_DELETE_SMS:
-        sendATCommand("AT+CMGD=1,1\r"); // ,1 : delete all read messages, max response time 5 s (delete 1 msg)
-        gsm_t_stateChange = now + 5000;
-        gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
-        break;
-        case GSM_STATE_DIAL:
-        sendATCommand("ATD+");
-        sendATCommand((char*)gsmGroundStationNumber);
-        sendATCommand(";\r");
-        gsm_t_stateChange = now + GSM_DIAL_WAIT_MS;
-        gsmWaitAfterResponse = true;
-        gsmTelemetryState = GSM_STATE_DIAL_HANGUP;
-        break;
-        case GSM_STATE_DIAL_HANGUP:
-        sendATCommand("ATH\r");
-        gsmTelemetryState = GSM_STATE_CHECK_SIGNAL;
-        break;
-*/
     }
 }
 
@@ -392,7 +362,7 @@ void sendSMS()
     int len;
     int32_t E7 = 10000000;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "%s%d.%02dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d %s google.com/maps/place/%ld.%07ld,%ld.%07ld,500m\x1b",
+    len = tfp_sprintf((char*)atCommand, "%s%d.%02dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d %s google.com/maps/place/%ld.%07ld,%ld.%07ld,500m\x1a",
         (now - t_accEventDetected) < 5000 ? accEventDescriptions[accEvent] : "",
         vbat / 100, vbat % 100,
         amps / 10, amps % 10,
@@ -403,7 +373,7 @@ void sendSMS()
         posControl.flags.forcedRTHActivated ? "RTH" : modeDescriptions[getFlightModeForTelemetry()],
         lat / E7, lat % E7, lon / E7, lon % E7);
     serialWriteBuf(gsmPort, atCommand, len);
-    DEBUG_TRACE_SYNC("%s", atCommand);
+//    DEBUG_TRACE_SYNC("%s", atCommand);
     atCommandStatus = GSM_AT_WAITING_FOR_RESPONSE;
 }
 
