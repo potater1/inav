@@ -1,11 +1,10 @@
-//#define SIM_TEST_SETTINGS
-
 #define SIM_AT_COMMAND_MAX_SIZE 256
 #define SIM_RESPONSE_BUFFER_SIZE 256
 #define SIM_CYCLE_MS 5000 								// wait between sim command cycles
 #define SIM_MIN_TRANSMISSION_INTERVAL 5
 #define SIM_AT_COMMAND_DELAY_MS 3000
 #define SIM_AT_COMMAND_DELAY_MIN_MS 500
+#define SIM_STARTUP_DELAY_MS 10000
 #define SIM_DEFAULT_TRANSMISSION_INTERVAL -60           // negative value: transmission off
 #define SIM_SMS_COMMAND_TRANSMISSION    "T"
 #define SIM_SMS_COMMAND_RTH             "RTH"

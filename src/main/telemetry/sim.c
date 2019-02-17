@@ -1,3 +1,7 @@
+#if defined(USE_TELEMETRY) && defined(USE_TELEMETRY_SIM)
+
+#include <string.h>
+
 #include "build/build_config.h"
 
 #include "common/axis.h"
@@ -30,19 +34,13 @@
 #include "sensors/gyro.h"
 #include "sensors/sensors.h"
 
-#include "telemetry/sim.h"
-#include "telemetry/telemetry.h"
-
 #include "common/string_light.h"
 #include "common/typeconversion.h"
 #include "build/debug.h"
 
-#include <string.h>
+#include "telemetry/sim.h"
+#include "telemetry/telemetry.h"
 
-
-#ifdef SIM_TEST_SETTINGS
-void cliSerial(char *cmdline);
-#endif
 
 static serialPort_t *simPort;
 static serialPortConfig_t *portConfig;
@@ -98,9 +96,6 @@ void requestSendSMS()
 
 void readSimResponse()
 {
-#ifdef SIM_TEST_SETTINGS
-    DEBUG_TRACE_SYNC("%s", simResponse);
-#endif
     if (readingSMS) {
         readSMS();
         readingSMS = false;
@@ -117,18 +112,12 @@ void readSimResponse()
     responseCode <<= 8; responseCode |= *resp++;
     responseCode <<= 8; responseCode |= *resp++;
 
-#ifdef SIM_TEST_SETTINGS
-    DEBUG_TRACE_SYNC("***RC: %d", responseCode);
-#endif
     if (responseCode == SIM_RESPONSE_CODE_OK) {
         // OK
         atCommandStatus = SIM_AT_OK;
         if (!simWaitAfterResponse) {
             sim_t_stateChange = millis() + SIM_AT_COMMAND_DELAY_MIN_MS;
         }
-#ifdef SIM_TEST_SETTINGS
-        DEBUG_TRACE_SYNC(">>>OK");
-#endif
         return;
     } else if (responseCode == SIM_RESPONSE_CODE_ERROR) {
         // ERROR
@@ -136,21 +125,12 @@ void readSimResponse()
         if (!simWaitAfterResponse) {
             sim_t_stateChange = millis() + SIM_AT_COMMAND_DELAY_MIN_MS;
         }
-#ifdef SIM_TEST_SETTINGS
-        DEBUG_TRACE_SYNC(">>>ERR");
-#endif
         return;
     } else if (responseCode == SIM_RESPONSE_CODE_RING) {
         // RING
-#ifdef SIM_TEST_SETTINGS
-        DEBUG_TRACE_SYNC(">>>RING");
-#endif
     } else if (responseCode == SIM_RESPONSE_CODE_CSQ) {
         // +CSQ: 26,0
         simRssi = fastA2I((char*)&simResponse[6]);
-#ifdef SIM_TEST_SETTINGS
-        DEBUG_TRACE_SYNC(">>>RSSI:%d", simRssi);
-#endif
     } else if (responseCode == SIM_RESPONSE_CODE_CLIP) {
         // we always get this after a RING when a call is incoming
         // +CLIP: "+3581234567"
@@ -182,30 +162,18 @@ void readOriginatingNumber(uint8_t* rv)
     for (i = 0; i < 15 && rv[i] != '\"'; i++)
          gsn[i] = rv[i];
     gsn[i] = '\0';
-#ifdef SIM_TEST_SETTINGS
-    DEBUG_TRACE_SYNC(">>>NUM:%s",(char*)gsn);
-#endif
 }
 
 void readSMS()
 {
-#ifdef SIM_TEST_SETTINGS
-    DEBUG_TRACE_SYNC(">>>SMS:\"%s\"", simResponse);
-#endif
     if (sl_strcasecmp((char*)simResponse, SIM_SMS_COMMAND_TRANSMISSION) == 0) {
         telemetryConfigMutable()->simTransmissionInterval *= -1;
         return;
     } else if (sl_strcasecmp((char*)simResponse, SIM_SMS_COMMAND_RTH) == 0) {
         if (!posControl.flags.forcedRTHActivated) {
             activateForcedRTH();
-#ifdef SIM_TEST_SETTINGS
-        DEBUG_TRACE_SYNC(">>>SMS: FORCED RTH");
-#endif
         } else {
             abortForcedRTH();
-#ifdef SIM_TEST_SETTINGS
-        DEBUG_TRACE_SYNC(">>>SMS: ABORT FORCED RTH");
-#endif
         }
     }
     requestSendSMS();
@@ -226,9 +194,6 @@ void detectAccEvents()
     else
         return;
 
-#ifdef SIM_TEST_SETTINGS
-    DEBUG_TRACE_SYNC("ACC EVENT %d A=%f", accEvent, sqrtf(accSq));
-#endif
     t_accEventDetected = now;
     if (now - t_accEventMessageSent > 5000) {
         requestSendSMS();
@@ -296,9 +261,6 @@ void handleSimTelemetry()
     simWaitAfterResponse = false;   // by default, if OK or ERROR received, go to next state immediately.
     switch (simTelemetryState) {
         case SIM_STATE_INIT:
-#ifdef SIM_TEST_SETTINGS
-        DEBUG_TRACE_SYNC("GSM INIT");
-#endif
         sendATCommand("AT\r");
         simTelemetryState = SIM_STATE_INIT2;
         break;
@@ -387,17 +349,6 @@ void freeSimTelemetryPort(void)
 void initSimTelemetry(void)
 {
     portConfig = findSerialPortConfig(FUNCTION_TELEMETRY_SIM);
-#ifdef SIM_TEST_SETTINGS
-    if (!portConfig) {
-        featureSet(FEATURE_DEBUG_TRACE);
-        featureSet(FEATURE_TELEMETRY);
-        cliSerial("0 2 115200 9600 9600 115200"); // 0=USART1 GPS
-        cliSerial("2 131072 115200 38400 9600 115200"); // 2=USART3
-        cliSerial("5 32768 115200 115200 115200 115200"); // 5=USART6
-        writeEEPROM();
-        fcReboot(false);
-    }
-#endif
 }
 
 void checkSimTelemetryState(void)
@@ -407,7 +358,6 @@ void checkSimTelemetryState(void)
     }
     configureSimTelemetryPort();
 }
-
 
 void configureSimTelemetryPort(void)
 {
@@ -422,4 +372,7 @@ void configureSimTelemetryPort(void)
         return;
     }
     simEnabled = true;
+    sim_t_stateChange = millis() + SIM_STARTUP_DELAY_MS;
 }
+
+#endif
