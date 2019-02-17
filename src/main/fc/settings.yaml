@@ -1502,12 +1502,12 @@ groups:
         field: ltmUpdateRate
         condition: USE_TELEMETRY_LTM
         table: ltm_rates
-      - name: gsm_ground_station_number
-        field: gsmGroundStationNumber
+      - name: sim_ground_station_number
+        field: simGroundStationNumber
         type: string
         max: 16
-      - name: gsm_transmission_interval
-        field: gsmTransmissionInterval
+      - name: sim_transmission_interval
+        field: simTransmissionInterval
         type: int16_t
         min: -32768
         max: 32767
