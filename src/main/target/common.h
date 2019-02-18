@@ -111,7 +111,7 @@
 #define USE_TELEMETRY_SMARTPORT
 #define USE_TELEMETRY_CRSF
 #define USE_MSP_OVER_TELEMETRY
-#define USE_TELEMETRY_GSM
+#define USE_TELEMETRY_SIM
 // These are rather exotic serial protocols
 #define USE_RX_MSP
 #define USE_SERIALRX_SUMD

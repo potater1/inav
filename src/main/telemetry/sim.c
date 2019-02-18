@@ -1,8 +1,8 @@
+#include "platform.h"
+
 #if defined(USE_TELEMETRY) && defined(USE_TELEMETRY_SIM)
 
 #include <string.h>
-
-#include "build/build_config.h"
 
 #include "common/axis.h"
 #include "common/streambuf.h"
@@ -276,6 +276,7 @@ void handleSimTelemetry()
         sendATCommand("AT+CMGF=1;+CNMI=3,2;+CLIP=1;+CSQ\r");
         simTelemetryState = SIM_STATE_INIT;
         sim_t_stateChange = now + SIM_CYCLE_MS;
+        simWaitAfterResponse = true;
         break;
         case SIM_STATE_SEND_SMS:
         sendATCommand("AT+CMGS=\"");
@@ -288,6 +289,7 @@ void handleSimTelemetry()
         sendSMS();
         simTelemetryState = SIM_STATE_INIT;
         sim_t_stateChange = now + SIM_CYCLE_MS;
+        simWaitAfterResponse = true;
         break;
     }
 }
@@ -324,7 +326,7 @@ void sendSMS()
     int len;
     int32_t E7 = 10000000;
     // \x1a sends msg, \x1b cancels
-    len = tfp_sprintf((char*)atCommand, "%s%d.%02dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIST:%d/%d SAT:%d GSM:%d %s google.com/maps/place/%ld.%07ld,%ld.%07ld,500m\x1a",
+    len = tfp_sprintf((char*)atCommand, "%s%d.%02dV %d.%dA ALT:%ld SPD:%ld/%d.%d DIS:%d/%d SAT:%d SIG:%d %s google.com/maps/place/%ld.%07ld,%ld.%07ld,500m\x1a",
         (now - t_accEventDetected) < 5000 ? accEventDescriptions[accEvent] : "",
         vbat / 100, vbat % 100,
         amps / 10, amps % 10,
@@ -335,7 +337,6 @@ void sendSMS()
         posControl.flags.forcedRTHActivated ? "RTH" : modeDescriptions[getFlightModeForTelemetry()],
         lat / E7, lat % E7, lon / E7, lon % E7);
     serialWriteBuf(simPort, atCommand, len);
-//    DEBUG_TRACE_SYNC("%s", atCommand);
     atCommandStatus = SIM_AT_WAITING_FOR_RESPONSE;
 }
 
