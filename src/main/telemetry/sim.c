@@ -54,7 +54,9 @@ static uint8_t simResponse[SIM_RESPONSE_BUFFER_SIZE + 1];
 static int atCommandStatus = SIM_AT_OK;
 static bool simWaitAfterResponse = false;
 static bool readingSMS = false;
-static bool failsafeStatePrevious = false;
+static bool sendingSMS = false;
+static bool sendingSmsTelemetry = false;
+static bool sendingSmsFailsafe = false;
 
 int simRssi;
 timeMs_t  t_accEventDetected = 0;
@@ -62,13 +64,6 @@ timeMs_t  t_accEventMessageSent = 0;
 uint8_t accEvent = ACC_EVENT_NONE;
 char* accEventDescriptions[] = { "", "HIT! ", "DROP ", "HIT " };
 char* modeDescriptions[] = { "MAN", "ACR", "ANG", "HOR", "ALH", "POS", "RTH", "WP", "LAU", "FS" };
-
-extern gpsLocation_t        GPS_home;
-extern uint16_t             GPS_distanceToHome;
-extern int16_t              GPS_directionToHome;
-extern gpsSolutionData_t    gpsSol;
-extern navigationPosControl_t  posControl;
-
 
 bool isGroundStationNumberDefined() {
     return telemetryConfig()->simGroundStationNumber[0] != '\0';
@@ -137,7 +132,7 @@ void readSimResponse()
         // +CLIP: "+3581234567"
         readOriginatingNumber(&simResponse[8]);
         if (checkGroundStationNumber(&simResponse[8])) {
-            requestSendSMS();
+            sendingSMS = true;
         }
     } else if (responseCode == SIM_RESPONSE_CODE_CMT) {
         // +CMT: <oa>,[<alpha>],<scts>[,<tooa>,<fo>,<pid>,<dcs>,<sca>,<tosca>,<length>]<CR><LF><data>
@@ -168,7 +163,8 @@ void readOriginatingNumber(uint8_t* rv)
 void readSMS()
 {
     if (sl_strcasecmp((char*)simResponse, SIM_SMS_COMMAND_TRANSMISSION) == 0) {
-        telemetryConfigMutable()->simTransmissionInterval *= -1;
+        sendingSmsTelemetry = !sendingSmsTelemetry;
+        if (sendingSmsTelemetry) sendingSMS = true;
         return;
     } else if (sl_strcasecmp((char*)simResponse, SIM_SMS_COMMAND_RTH) == 0) {
         if (!posControl.flags.forcedRTHActivated) {
@@ -177,7 +173,7 @@ void readSMS()
             abortForcedRTH();
         }
     }
-    requestSendSMS();
+    sendingSMS = true;
 }
 
 void detectAccEvents()
@@ -197,32 +193,26 @@ void detectAccEvents()
 
     t_accEventDetected = now;
     if (now - t_accEventMessageSent > 5000) {
-        requestSendSMS();
+        sendingSMS = true;
         t_accEventMessageSent = now;
     }
 }
 
 void detectFailsafe()
 {
-    if (!failsafeStatePrevious && FLIGHT_MODE(FAILSAFE_MODE) && ARMING_FLAG(WAS_EVER_ARMED)) {
-        requestSendSMS();
-        if (telemetryConfig()->simTransmissionInterval < 0) {
-            telemetryConfigMutable()->simTransmissionInterval *= -1;
-            sim_t_nextMessage = millis() + 1000 * telemetryConfig()->simTransmissionInterval;
-        }
-    }
-    failsafeStatePrevious = FLIGHT_MODE(FAILSAFE_MODE);
+    if (FLIGHT_MODE(FAILSAFE_MODE) && ARMING_FLAG(WAS_EVER_ARMED)) {
+        if (!sendingSmsTelemetry) sendingSMS = true;
+        sendingSmsTelemetry = true;
+    } else sendingSmsTelemetry = false;
 }
 
 void transmit()
 {
-    uint32_t now = millis();
-
     if (!ARMING_FLAG(WAS_EVER_ARMED) || telemetryConfig()->simTransmissionInterval < SIM_MIN_TRANSMISSION_INTERVAL) {
-        sim_t_nextMessage = 0;
-    } else if (now > sim_t_nextMessage) {
-        requestSendSMS();
-        sim_t_nextMessage = now + 1000 * telemetryConfig()->simTransmissionInterval;
+        sendingSmsTelemetry = false;
+    } else {
+        if (!sendingSmsTelemetry) sendingSMS = true;
+        sendingSmsTelemetry = true;
     }
 }
 
@@ -254,6 +244,17 @@ void handleSimTelemetry()
     detectAccEvents();
     detectFailsafe();
     transmit();
+
+    if (sendingSmsFailsafe || sendingSmsTelemetry) {
+        if (sendingSMS || now > sim_t_nextMessage) {
+            sim_t_nextMessage = now + 1000 * ABS(telemetryConfig()->simTransmissionInterval);
+            sendingSMS = true;
+        }
+    }
+    if (sendingSMS) {
+        sendingSMS = false;
+        requestSendSMS();
+    }
 
     if (now < sim_t_stateChange)
         return;
