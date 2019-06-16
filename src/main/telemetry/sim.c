@@ -45,6 +45,8 @@
 #include "telemetry/sim.h"
 #include "telemetry/telemetry.h"
 
+#include "common/log.h"
+
 #define SIM_AT_COMMAND_MAX_SIZE 255
 #define SIM_RESPONSE_BUFFER_SIZE 255
 #define SIM_CYCLE_MS 5000                       // wait between sim command cycles
@@ -238,6 +240,7 @@ static void readSMS(void)
 
 static void readSimResponse(void)
 {
+LOG_D(SYSTEM,"<<<%s",simResponse);
     if (readState == SIM_READSTATE_SKIP) {
         readState = SIM_READSTATE_RESPONSE;
         return;
@@ -356,6 +359,7 @@ static void sendATCommand(const char* command)
     atCommandStatus = SIM_AT_WAITING_FOR_RESPONSE;
     uint8_t len = MIN((uint8_t)strlen(command), SIM_AT_COMMAND_MAX_SIZE);
     serialWriteBuf(simPort, (const uint8_t*) command, len);
+LOG_D(SYSTEM,">>>%s",command);
 }
 
 static void sendSMS(void)
@@ -407,6 +411,7 @@ static void sendSMS(void)
     t_lastMessageSent = now;
     accEvent = ACC_EVENT_NONE;
     atCommandStatus = SIM_AT_WAITING_FOR_RESPONSE;
+LOG_D(SYSTEM,">>>%s",atCommand);
 }
 
 void handleSimTelemetry()
